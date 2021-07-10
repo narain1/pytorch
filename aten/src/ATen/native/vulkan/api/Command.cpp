@@ -71,9 +71,6 @@ void allocate_command_buffers(
 
 Command::Buffer::Buffer(const VkCommandBuffer command_buffer)
   : command_buffer_(command_buffer) {
-  TORCH_INTERNAL_ASSERT_DEBUG_ONLY(
-      command_buffer_,
-      "Invalid Vulkan command buffer!");
 }
 
 Command::Buffer::Buffer(Buffer&& buffer)
@@ -374,13 +371,14 @@ Command::Pool::~Pool() {
     }
   }
   catch (const std::exception& e) {
-    LOG(WARNING)
-        << "Vulkan: Command pool destructor raised an exception!  Error: "
-        << e.what();
+    TORCH_WARN(
+        "Vulkan: Command pool destructor raised an exception! Error: ",
+        e.what());
   }
   catch (...) {
-    LOG(WARNING)
-        << "Vulkan: Command pool destructor raised an unknown exception!";
+    TORCH_WARN(
+        "Vulkan: Command pool destructor raised an exception! "
+        "Error: Unknown");
   }
 }
 
@@ -484,7 +482,7 @@ void Command::Pool::submit(
       0u,
       nullptr,
       nullptr,
-      command_buffers.size(),
+      utils::safe_downcast<uint32_t>(command_buffers.size()),
       command_buffers.data(),
       0u,
       nullptr,

@@ -5,9 +5,10 @@ import torch
 import doctest
 import os
 import inspect
+from pathlib import Path
 
 try:
-    import mypy.api  # type: ignore
+    import mypy.api
     HAVE_MYPY = True
 except ImportError:
     HAVE_MYPY = False
@@ -36,10 +37,10 @@ def get_all_examples():
     example_file_lines = [
         "import torch",
         "import torch.nn.functional as F",
-        "import math  # type: ignore",  # mypy complains about floats where SupportFloat is expected
-        "import numpy  # type: ignore",
-        "import io  # type: ignore",
-        "import itertools  # type: ignore",
+        "import math",
+        "import numpy",
+        "import io",
+        "import itertools",
         "",
         # for requires_grad_ example
         # NB: We are parsing this file as Python 2, so we must use
@@ -76,7 +77,7 @@ class TestTypeHints(TestCase):
         """
         Run documentation examples through mypy.
         """
-        fn = os.path.join(os.path.dirname(__file__), 'generated_type_hints_smoketest.py')
+        fn = Path(__file__).resolve().parent / 'generated_type_hints_smoketest.py'
         with open(fn, "w") as f:
             print(get_all_examples(), file=f)
 
@@ -118,66 +119,18 @@ class TestTypeHints(TestCase):
                 )
             except OSError:
                 raise unittest.SkipTest('cannot symlink') from None
-            (stdout, stderr, result) = mypy.api.run([
-                '--cache-dir=.mypy_cache/doc',
-                '--no-strict-optional',  # needed because of torch.lu_unpack, see gh-36584
-                os.path.abspath(fn),
-            ])
+            repo_rootdir = Path(__file__).resolve().parent.parent
+            # TODO: Would be better not to chdir here, this affects the
+            # entire process!
+            with set_cwd(str(repo_rootdir)):
+                (stdout, stderr, result) = mypy.api.run([
+                    '--cache-dir=.mypy_cache/doc',
+                    '--no-strict-optional',  # needed because of torch.lu_unpack, see gh-36584
+                    str(fn),
+                ])
             if result != 0:
-                self.fail(f"mypy failed:\n{stdout}")
+                self.fail(f"mypy failed:\n{stderr}\n{stdout}")
 
-    @unittest.skipIf(not HAVE_MYPY, "need mypy")
-    def test_run_mypy(self):
-        """
-        Runs mypy over all files specified in mypy.ini
-        Note that mypy.ini is not shipped in an installed version of PyTorch,
-        so this test will only run mypy in a development setup or in CI.
-        """
-        def is_torch_mypyini(path_to_file):
-            with open(path_to_file, 'r') as f:
-                first_line = f.readline()
-
-            if first_line.startswith('# This is the PyTorch MyPy config file'):
-                return True
-
-            return False
-
-        test_dir = os.path.dirname(os.path.realpath(__file__))
-        repo_rootdir = os.path.join(test_dir, '..')
-        mypy_inifile = os.path.join(repo_rootdir, 'mypy.ini')
-        if not (os.path.exists(mypy_inifile) and is_torch_mypyini(mypy_inifile)):
-            self.skipTest("Can't find PyTorch MyPy config file")
-
-        import numpy
-        if numpy.__version__ == '1.20.0.dev0+7af1024':
-            self.skipTest("Typeannotations in numpy-1.20.0-dev are broken")
-
-        # TODO: Would be better not to chdir here, this affects the entire
-        # process!
-        with set_cwd(repo_rootdir):
-            (stdout, stderr, result) = mypy.api.run([])
-
-        if result != 0:
-            self.fail(f"mypy failed: {stdout} {stderr}")
-
-    @unittest.skipIf(not HAVE_MYPY, "need mypy")
-    def test_run_mypy_strict(self):
-        """
-        Runs mypy over all files specified in mypy-strict.ini
-        """
-        test_dir = os.path.dirname(os.path.realpath(__file__))
-        repo_rootdir = os.path.join(test_dir, '..')
-        mypy_inifile = os.path.join(repo_rootdir, 'mypy-strict.ini')
-        if not os.path.exists(mypy_inifile):
-            self.skipTest("Can't find PyTorch MyPy strict config file")
-
-        with set_cwd(repo_rootdir):
-            (stdout, stderr, result) = mypy.api.run([
-                '--config', mypy_inifile,
-            ])
-
-        if result != 0:
-            self.fail(f"mypy failed: {stdout} {stderr}")
 
 if __name__ == '__main__':
     run_tests()
